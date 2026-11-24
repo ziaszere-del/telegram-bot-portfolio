@@ -2,6 +2,7 @@
 import os
 
 from dotenv import load_dotenv
+from database import create_database, add_order, get_user_orders
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -23,8 +24,7 @@ PRODUCTS = {
     "🤎 Бронзер": 4500,
 }
 
-# Хранилище заказов
-ORDERS = {}
+
 
 
 # Главное меню
@@ -109,17 +109,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         price = context.user_data["price"]
         phone = user_text
 
-        order = {
-            "name": name,
-            "product": product,
-            "price": price,
-            "phone": phone,
-        }
-
-        if user_id not in ORDERS:
-            ORDERS[user_id] = []
-
-        ORDERS[user_id].append(order)
+        order_id = add_order(
+            user_id,
+            name,
+            phone,
+            product,
+            price
+        )
 
         await update.message.reply_text(
             "✅ Заказ оформлен!\n\n"
@@ -135,7 +131,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Просмотр заказов
     elif user_text == "📦 Мои заказы":
         context.user_data.clear()
-        user_orders = ORDERS.get(user_id, [])
+        user_orders = get_user_orders(user_id)
 
         if not user_orders:
             await update.message.reply_text(
@@ -144,11 +140,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             message = "📦 Твои заказы:\n\n"
 
-            for number, order in enumerate(user_orders, start=1):
+            for order in user_orders:
+                order_id, product, price, created_at = order
+
                 message += (
-                    f"Заказ №{number}\n"
-                    f"Товар: {order['product']}\n"
-                    f"Цена: {order['price']} ₸\n\n"
+                    f"Заказ №{order_id}\n"
+                    f"Товар: {product}\n"
+                    f"Цена: {price} ₸\n"
+                    f"Дата: {created_at}\n\n"
                 )
 
             await update.message.reply_text(message)
@@ -176,6 +175,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Запуск бота
 def main():
+    create_database()
+    
     if not TOKEN:
         raise ValueError(
             "Токен не найден! Проверь файл .env"
