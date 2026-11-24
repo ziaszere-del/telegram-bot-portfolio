@@ -3,6 +3,7 @@ import os
 
 from dotenv import load_dotenv
 from database import create_database, add_order, get_user_orders
+
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -25,15 +26,14 @@ PRODUCTS = {
 }
 
 
-
-
 # Главное меню
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.clear()
+    context.user_data.pop("step", None)
 
     keyboard = [
         ["🛍 Каталог товаров"],
-        ["📦 Мои заказы", "ℹ️ О боте"],
+        ["🛒 Корзина", "📦 Мои заказы"],
+        ["ℹ️ О боте"],
     ]
 
     reply_markup = ReplyKeyboardMarkup(
@@ -43,8 +43,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "Привет! Я SmartOrder 👋\n\n"
-        "Здесь ты можешь посмотреть товары "
-        "и оформить заказ.\n\n"
+        "Здесь ты можешь выбрать товары, "
+        "добавить их в корзину и оформить заказ.\n\n"
         "Выбери нужное действие:",
         reply_markup=reply_markup
     )
@@ -58,7 +58,52 @@ async def show_catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message += f"{product} — {price} ₸\n"
 
     keyboard = [[product] for product in PRODUCTS]
+    keyboard.append(["🛒 Корзина"])
     keyboard.append(["⬅️ Главное меню"])
+
+    reply_markup = ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True
+    )
+
+    await update.message.reply_text(
+        message,
+        reply_markup=reply_markup
+    )
+
+
+# Показ корзины
+async def show_cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cart = context.user_data.get("cart", {})
+
+    if not cart:
+        await update.message.reply_text(
+            "🛒 Твоя корзина пока пуста."
+        )
+        return
+
+    message = "🛒 Твоя корзина:\n\n"
+    total = 0
+
+    for product, quantity in cart.items():
+        price = PRODUCTS[product]
+        subtotal = price * quantity
+        total += subtotal
+
+        message += (
+            f"{product}\n"
+            f"Количество: {quantity}\n"
+            f"Стоимость: {subtotal} ₸\n\n"
+        )
+
+    message += f"💰 Итого: {total} ₸"
+
+    keyboard = [
+        ["🧾 Оформить заказ"],
+        ["🧹 Очистить корзину"],
+        ["🛍 Каталог товаров"],
+        ["⬅️ Главное меню"],
+    ]
 
     reply_markup = ReplyKeyboardMarkup(
         keyboard,
@@ -78,24 +123,59 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Открытие каталога
     if user_text == "🛍 Каталог товаров":
-        context.user_data.clear()
+        context.user_data.pop("step", None)
         await show_catalog(update, context)
 
-    # Выбор товара
+    # Просмотр корзины
+    elif user_text == "🛒 Корзина":
+        context.user_data.pop("step", None)
+        await show_cart(update, context)
+
+    # Добавление товара
     elif user_text in PRODUCTS:
-        context.user_data["product"] = user_text
-        context.user_data["price"] = PRODUCTS[user_text]
-        context.user_data["step"] = "name"
+        cart = context.user_data.setdefault("cart", {})
+        cart[user_text] = cart.get(user_text, 0) + 1
 
         await update.message.reply_text(
-            f"Ты выбрала: {user_text}\n"
-            f"Цена: {PRODUCTS[user_text]} ₸\n\n"
-            "Как тебя зовут?"
+            f"✅ {user_text} добавлен в корзину!\n"
+            f"Количество: {cart[user_text]}\n\n"
+            "Можешь выбрать ещё товары или открыть корзину."
         )
+
+    # Очистка корзины
+    elif user_text == "🧹 Очистить корзину":
+        context.user_data["cart"] = {}
+
+        await update.message.reply_text(
+            "🧹 Корзина очищена!"
+        )
+
+    # Начало оформления заказа
+    elif user_text == "🧾 Оформить заказ":
+        cart = context.user_data.get("cart", {})
+
+        if not cart:
+            await update.message.reply_text(
+                "Твоя корзина пуста. Сначала добавь товары."
+            )
+        else:
+            context.user_data["step"] = "name"
+
+            await update.message.reply_text(
+                "Для оформления заказа напиши своё имя:"
+            )
 
     # Получение имени
     elif context.user_data.get("step") == "name":
-        context.user_data["name"] = user_text
+        name = user_text.strip()
+
+        if not name or len(name) > 100:
+            await update.message.reply_text(
+                "Пожалуйста, введи корректное имя."
+            )
+            return
+
+        context.user_data["name"] = name
         context.user_data["step"] = "phone"
 
         await update.message.reply_text(
@@ -104,24 +184,45 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Получение телефона и оформление заказа
     elif context.user_data.get("step") == "phone":
+        phone = user_text.strip()
+
+        if len(phone) < 7 or len(phone) > 20:
+            await update.message.reply_text(
+                "Пожалуйста, проверь номер телефона и введи его ещё раз."
+            )
+            return
+
         name = context.user_data["name"]
-        product = context.user_data["product"]
-        price = context.user_data["price"]
-        phone = user_text
+        cart = context.user_data.get("cart", {})
+
+        total = 0
+        products_list = []
+
+        for product, quantity in cart.items():
+            price = PRODUCTS[product]
+            subtotal = price * quantity
+            total += subtotal
+
+            products_list.append(
+                f"{product} × {quantity} — {subtotal} ₸"
+            )
+
+        product_summary = "\n".join(products_list)
 
         order_id = add_order(
             user_id,
             name,
             phone,
-            product,
-            price
+            product_summary,
+            total
         )
 
         await update.message.reply_text(
-            "✅ Заказ оформлен!\n\n"
-            f"Имя: {name}\n"
-            f"Товар: {product}\n"
-            f"Цена: {price} ₸\n"
+            "✅ Заказ успешно оформлен!\n\n"
+            f"Номер заказа: №{order_id}\n"
+            f"Имя: {name}\n\n"
+            f"Товары:\n{product_summary}\n\n"
+            f"💰 Общая сумма: {total} ₸\n"
             f"Телефон: {phone}\n\n"
             "Спасибо за заказ!"
         )
@@ -130,7 +231,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Просмотр заказов
     elif user_text == "📦 Мои заказы":
-        context.user_data.clear()
+        context.user_data.pop("step", None)
         user_orders = get_user_orders(user_id)
 
         if not user_orders:
@@ -145,8 +246,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 message += (
                     f"Заказ №{order_id}\n"
-                    f"Товар: {product}\n"
-                    f"Цена: {price} ₸\n"
+                    f"Товары:\n{product}\n"
+                    f"Общая сумма: {price} ₸\n"
                     f"Дата: {created_at}\n\n"
                 )
 
@@ -154,17 +255,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Информация о боте
     elif user_text == "ℹ️ О боте":
-        context.user_data.clear()
+        context.user_data.pop("step", None)
 
         await update.message.reply_text(
             "SmartOrder — демонстрационный Telegram-бот "
             "для автоматизации приёма заказов.\n\n"
-            "Он помогает клиентам выбирать товары "
-            "и оформлять покупки."
+            "Он помогает клиентам выбирать товары, "
+            "собирать корзину и оформлять покупки."
         )
 
     # Возврат в главное меню
     elif user_text == "⬅️ Главное меню":
+        context.user_data.pop("step", None)
         await start(update, context)
 
     else:
@@ -176,7 +278,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Запуск бота
 def main():
     create_database()
-    
+
     if not TOKEN:
         raise ValueError(
             "Токен не найден! Проверь файл .env"

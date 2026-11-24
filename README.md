@@ -1,20 +1,79 @@
-
 # SmartOrder 🛍️
+### Telegram-магазин для автоматизации заказов
 
-A Telegram bot for automating orders in online stores.
+**SmartOrder** — Telegram-бот, который помогает небольшим онлайн-магазинам принимать и обрабатывать заказы прямо в Telegram.
 
-## Features
-- Product catalog
-- Product selection
-- Customer information collection
-- Order confirmation
-- Order history
+## Возможности
 
-## Technologies
-- Python
-- Telegram Bot API
-- python-telegram-bot
-- python-dotenv
+- Просмотр каталога товаров и цен
+- Добавление нескольких товаров в корзину
+- Автоматический подсчёт общей стоимости заказа
+- Просмотр и очистка корзины
+- Оформление заказа с указанием имени и номера телефона
+- Получение номера заказа после оформления
+- Просмотр истории заказов
 
-## About
-SmartOrder is an educational portfolio project.
+## Технологии
+
+- **Python** — основной язык программирования
+- **python-telegram-bot** — работа с Telegram Bot API
+- **SQLite** — хранение информации о заказах
+- **python-dotenv** — загрузка настроек из файла окружения
+
+## Структура проекта
+
+```text
+telegram-bot-portfolio/
+│
+├── SmartOrder/
+│   ├── main.py
+│   └── database.py
+│
+├── .gitignore
+└── README.md
+```
+
+Файлы `.env` и `orders.db` создаются локально и не загружаются в GitHub.
+
+## Запуск проекта
+
+1. Склонируйте репозиторий:
+
+```bash
+git clone https://github.com/ziaszere-del/telegram-bot-portfolio.git
+```
+
+2. Перейдите в папку проекта:
+
+```bash
+cd telegram-bot-portfolio/SmartOrder
+```
+
+3. Создайте виртуальное окружение:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
+4. Установите необходимые библиотеки:
+
+```bash
+pip install python-telegram-bot python-dotenv
+```
+
+5. Создайте файл `.env` и добавьте в него токен Telegram-бота:
+
+```text
+TELEGRAM_BOT_TOKEN=ваш_токен
+```
+
+6. Запустите бота:
+
+```bash
+python main.py
+```
+
+## О проекте
+
+SmartOrder — учебный проект для практики Python и разработки Telegram-ботов. В процессе работы были изучены обработка пользовательских действий, работа с корзиной, сохранение данных в SQLite и организация структуры проекта.
